@@ -1,0 +1,1 @@
+module.exports = (Discord, client, err) => console.error(err);
