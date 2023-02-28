@@ -1,21 +1,39 @@
-const Discord = require('discord.js');
-const client = new Discord.Client({
-    intents: 3276799
-})
+const child = require('child_process');
+const get = require('node-fetch2');
 
-require('dotenv').config();
+const runProcess = () => {
+    let bot = child.spawn('node', ['process.js']);
 
-client.interactions = {
-    commands: {},
-    context: {
-        user: {},
-        message: {}
-    }
-};
-client.queue = new Map();
+    bot.stdout.on('data', (data) => {
+        console.log(data.toString().trim());
+        sendWebhook(data.toString().trim());
+    });
 
-['event', 'interactions'].forEach(handler => {
-    require(`./handlers/${handler}`)(client, Discord)
-});
+    bot.stderr.on('data', (data) => {
+        console.log(data.toString().trim());
+        sendWebhook(data.toString().trim());
+    });
 
-client.login(process.env.TOKEN)
+    bot.on('close', (code) => {
+        console.log(`Process exited with code ${code}`)
+        if (code > 0) {
+            console.log('Restarting...');
+
+            runProcess();
+        } else process.exit();
+    })
+}
+
+const sendWebhook = (msg) => {
+    const whurl = process.env.WHURL;
+
+    get(whurl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ content: msg })
+    });
+}
+
+runProcess();
