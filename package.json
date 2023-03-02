@@ -5,6 +5,8 @@
     "discord-escape": "^1.0.0",
     "discord.js": "^14.7.1",
     "dotenv": "^16.0.3",
+    "ffmpeg": "^0.0.4",
+    "ffmpeg-static": "^5.1.0",
     "hhmmss": "^1.0.0",
     "hhmmsstosec": "^1.0.2",
     "libsodium-wrappers": "^0.7.11",
@@ -15,7 +17,6 @@
     "sourcebin": "^5.0.0",
     "util": "^0.12.5",
     "yt-search": "^2.10.4",
-    "ytdl-core": "^4.11.2",
     "ytpl": "^2.3.0",
     "ytsr": "github:Yonle/node-ytsr"
   },

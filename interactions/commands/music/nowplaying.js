@@ -21,7 +21,7 @@ module.exports = {
                 .setTimestamp(song.uploaded)
                 .setURL(song.url)
                 .addFields(
-                    { name: 'Channel', value: `[${song.channel}](${song.channelLink})`, inline: true },
+                    { name: 'Artist', value: `[${song.artist}](${song.artistLink})`, inline: true },
                     { name: 'Duration', value: song.duration, inline: true },
                     { name: 'Requested by', value: song.req.toString(), inline: true },
                     { name: 'Views', value: song.views, inline: true },

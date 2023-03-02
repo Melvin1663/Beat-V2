@@ -1,3 +1,5 @@
+const fs = require('fs')
+
 module.exports = {
     name: 'skip',
     description: 'Skip songs',
@@ -23,9 +25,14 @@ module.exports = {
             q.player?.stop();
 
             if (!args.length || args[0] == 1) lSong = q.songs.shift();
-            else q.songs.splice(0, args[0]);
+            else {
+                lSong = q.songs[0];
+                q.songs.splice(0, args[0]);
+            }
 
             await require('../../../functions/play')(int, client, Discord);
+
+            if (lSong.type == 'discord-attachment') fs.unlink(lSong.stream, console.error);
 
             return int.reply({
                 embeds: [

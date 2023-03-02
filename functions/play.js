@@ -1,5 +1,5 @@
 const voice = require('@discordjs/voice');
-const ytdl = require('ytdl-core');
+const fs = require('fs')
 const pdl = require('play-dl');
 
 module.exports = async (int, client, Discord) => {
@@ -20,25 +20,34 @@ module.exports = async (int, client, Discord) => {
                 q.player?.removeAllListeners()
                 q.player?.stop();
                 client.queue.delete(int.guild.id);
+
+                require('./clearTemp')();
+
                 return a++;
             }
 
             // if song repeat is on
-            if (q.repeat == true) { a++ };
+            if (q.repeat) { a++ };
 
             // if queue loop is on
-            if (q.loop == true && q.repeat == false) {
+            if (q.loop && !q.repeat) {
                 let b = q.songs.shift();
                 q.songs.push(b);
                 a++
             };
 
-            if (a == 0) q.songs.shift();
+            if (!a) {
+                let s = q.songs.shift();
+
+                if (s.type == 'discord-attachment') fs.unlink(s.stream, e => e ? console.error(e) : {});
+            }
 
             if (!q.songs.length) {
                 q.player.removeAllListeners()
                 q.player.stop();
                 client.queue.delete(int.guild.id);
+                require('./clearTemp')();
+
                 return;
             }
 
@@ -50,10 +59,16 @@ module.exports = async (int, client, Discord) => {
                 if (resSong) newSongInfo = resSong.res;
             }
 
+            q.songs.forEach((s, i) => {
+                if (s.type == 'discord-attachment' && i != 0) fs.unlink(s.stream, e => e ? console.error(e) : {});
+            })
+
             q.songs[0] = newSongInfo;
 
-            await player.play(voice.createAudioResource(await pdl.stream(q.songs[0].url, { quality: 2, discordPlayerCompatibility: true }).then(r => r.stream), { inlineVolume: true, type: 'opus' }));
-            q.connection.state.subscription.player.state.resource.volume.setVolume(q.volume)
+            if (!q.songs[0].stream) q.songs[0].stream = await pdl.stream(q.songs[0].url, { quality: 2, discordPlayerCompatibility: true }).then(r => r.stream);
+
+            await player.play(voice.createAudioResource(q.songs[0].stream, { inlineVolume: true, type: 'opus' }));
+            q.connection.state.subscription.player.state.resource.volume.setVolume(q.volume);
         })
 
         let e = 0
@@ -63,6 +78,8 @@ module.exports = async (int, client, Discord) => {
             e++;
             q.textChannel.send('An error occured while playing the song: ' + err.message)
             if (q.songs.length > 1) q.songs.shift();
+            require('./clearTemp')();
+
             require('./play')(int, client, Discord)
         })
 
@@ -72,12 +89,16 @@ module.exports = async (int, client, Discord) => {
             q.player.removeAllListeners()
             q.player.stop();
             client.queue.delete(int.guild.id);
+
+            require('./clearTemp')();
             return;
         }
 
         q.player = player;
 
-        await player.play(voice.createAudioResource(await pdl.stream(q.songs[0].url, { quality: 2, discordPlayerCompatibility: true }).then(r => r.stream), { inlineVolume: true, type: 'opus' }));
+        if (!q.songs[0].stream) q.songs[0].stream = await pdl.stream(q.songs[0].url, { quality: 2, discordPlayerCompatibility: true }).then(r => r.stream);
+
+        await player.play(voice.createAudioResource(q.songs[0].stream, { inlineVolume: true, type: 'opus' }));
 
         q.connection.subscribe(player);
         q.connection.state.subscription.player.state.resource.volume.setVolume(q.volume)
@@ -87,6 +108,8 @@ module.exports = async (int, client, Discord) => {
             player?.removeAllListeners();
             player?.stop();
             client.queue.delete(int.guild.id)
+
+            require('./clearTemp')();
         })
 
         player.on('playing', async (oS, nS) => {
@@ -97,6 +120,8 @@ module.exports = async (int, client, Discord) => {
                 q.player.removeAllListeners()
                 q.player.stop();
                 client.queue.delete(int.guild.id);
+                require('./clearTemp')();
+
                 return;
             }
 
@@ -123,7 +148,7 @@ module.exports = async (int, client, Discord) => {
                         .setURL(song.url)
                         .setTimestamp(song.uploaded)
                         .addFields(
-                            { name: 'Channel', value: `[${song.channel}](${song.channelLink})`, inline: true },
+                            { name: 'Artist', value: `[${song.artist}](${song.artistLink})`, inline: true },
                             { name: 'Duration', value: song.duration, inline: true },
                             { name: 'Requested by', value: song.req.toString(), inline: true },
                             { name: 'Views', value: song.views, inline: true },

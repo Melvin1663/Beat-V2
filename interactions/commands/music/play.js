@@ -51,7 +51,7 @@ module.exports = {
                         .setTitle(descape(pl.title))
                         .setURL(pl.url)
                         .addFields(
-                            { name: 'Channel', value: `[${pl.author.name}](${pl.author.url})`, inline: true },
+                            { name: 'Artist', value: `[${pl.author.name}](${pl.author.url})`, inline: true },
                             { name: 'Duration', value: hhmmss(totalDur) ?? '?', inline: true },
                             { name: 'Requested by', value: song.req.toString(), inline: true },
                             { name: 'Visibility', value: pl.visibility ?? '?', inline: true },
@@ -67,7 +67,7 @@ module.exports = {
                     .setURL(song.url)
                     .setTimestamp(song.uploaded)
                     .addFields(
-                        { name: 'Channel', value: `[${song.channel}](${song.channelLink})`, inline: true },
+                        { name: 'Artist', value: `[${song.artist}](${song.artistLink})`, inline: true },
                         { name: 'Duration', value: song.duration, inline: true },
                         { name: 'Views', value: song.views, inline: true },
                         { name: 'Requested by', value: song.req.toString(), inline: true },
@@ -119,7 +119,7 @@ module.exports = {
                         .setTitle(descape(pl.title))
                         .setURL(pl.url)
                         .addFields(
-                            { name: 'Channel', value: `[${pl.author.name}](${pl.author.url})`, inline: true },
+                            { name: 'Artist', value: `[${pl.author.name}](${pl.author.url})`, inline: true },
                             { name: 'Duration', value: hhmmss(totalDur) ?? '?', inline: true },
                             { name: 'Requested by', value: song.req.toString(), inline: true },
                             { name: 'Visibility', value: pl.visibility ?? '?', inline: true },

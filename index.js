@@ -1,5 +1,6 @@
 const child = require('child_process');
 const get = require('node-fetch2');
+require('dotenv').config();
 
 const runProcess = () => {
     let bot = child.spawn('node', ['process.js']);
@@ -25,9 +26,7 @@ const runProcess = () => {
 }
 
 const sendWebhook = (msg) => {
-    const whurl = process.env.WHURL;
-
-    get(whurl, {
+    get(process.env.WHURL, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'

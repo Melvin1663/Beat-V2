@@ -1,19 +1,62 @@
 const ytpl = require("ytpl");
 const ytsr = require('ytsr');
-const ytdl = require("ytdl-core");
 const moment = require('moment');
 const hhmmss = require('hhmmss');
 const hhmmssToSec = require('hhmmsstosec');
 const descape = require('discord-escape');
 const pdl = require('play-dl');
+const ffmpeg = require('ffmpeg');
+const fs = require('fs');
+const { promisify } = require('util');
+const { pipeline } = require('stream');
+const get = require('node-fetch2');
+const sp = promisify(pipeline);
 
 module.exports = async (query, client, int) => {
     const url = query ? query.replace(/<(.+)>/g, "$1") : '';
     if (!url) return { code: 1, txt: '❌ No Query given' };
 
     try {
-        // if playlist
-        if (url.match(/^https?:\/\/(www.youtube.com|youtube.com)\/playlist(.*)$/)) {
+        if (url.match(/https:\/\/cdn.discordapp.com\/ephemeral-attachments\/[0-9]+\/[0-9]+\/.+/gm)) {
+            let req = await get(url);
+            let dattach = int.options.getAttachment('song');
+            let now = new Date();
+            let filePath = `temp/${now.getTime()}.${url.split('.')[3]}`;
+
+            await sp(req.body, fs.createWriteStream(filePath));
+
+            let audioFile = await new ffmpeg(filePath);
+
+            let songInfo = audioFile.metadata;
+            
+            return {
+                code: 0,
+                txt: '✅ Success',
+                res: {
+                    type: 'discord-attachment',
+                    infoReady: true,
+                    stream: filePath,
+                    id: dattach.id,
+                    title: descape(songInfo.title || dattach.name || 'N/A'),
+                    url: url,
+                    img: 'https://cdn-icons-png.flaticon.com/512/1169/1169863.png',
+                    duration: hhmmss(songInfo.duration.seconds),
+                    ago: moment(now.getTime()).fromNow(),
+                    uploaded: now.getTime(),
+                    views: 'N/A',
+                    likes: 'N/A',
+                    req: int.user,
+                    start: 0,
+                    live: false,
+                    startedAt: 0,
+                    artist: descape(songInfo.artist || 'N/A'),
+                    artistLink: 'N/A',
+                    ageRestricted: false,
+                }
+            };
+
+            // if playlist
+        } else if (url.match(/^https?:\/\/(www.youtube.com|youtube.com)\/playlist(.*)$/)) {
             try {
                 const playlist = await ytpl(url).catch(console.log)
                 if (!playlist) return { code: 1, txt: '❌ No results found' }
@@ -37,8 +80,8 @@ module.exports = async (query, client, int) => {
                             start: 0,
                             live: video.isLive,
                             startedAt: 0,
-                            channel: descape(video.author.name),
-                            channelLink: video.author.url,
+                            artist: descape(video.author.name),
+                            artistLink: video.author.url,
                             ageRestricted: false
                         })
                     }
@@ -91,8 +134,8 @@ module.exports = async (query, client, int) => {
                 start: 0,
                 live: songInfo.isLive,
                 startedAt: 0,
-                channel: descape(songInfo.author.name),
-                channelLink: descape(songInfo.author.url),
+                artist: descape(songInfo.author.name),
+                artistLink: descape(songInfo.author.url),
                 ageRestricted: null,
             }
 
@@ -124,8 +167,8 @@ const getVideoInfo = async (url, int) => {
         start: 0,
         live: songInfo.video_details.live,
         startedAt: 0,
-        channel: descape(songInfo.video_details.channel.name),
-        channelLink: descape(songInfo.video_details.channel.url),
+        artist: descape(songInfo.video_details.channel.name),
+        artistLink: descape(songInfo.video_details.channel.url),
         ageRestricted: songInfo.video_details.discretionAdvised,
     };
 
