@@ -1,6 +1,6 @@
 module.exports = {
-    name: 'playskip',
-    description: 'Queue a song and skip the currently playing song',
+    name: 'playtop',
+    description: 'Queue a song and places it as second in the queue',
     options: [
         {
             name: 'song',
@@ -18,8 +18,7 @@ module.exports = {
             if (q && int?.member?.voice?.channelId !== q.voiceChannel.id) return int.reply(`❌ You need to be in <#${q.voiceChannel.id}>`);
 
             await require('./play').run(Discord, client, int, args);
-            q.songs.shift();
-            await require('../../../functions/play')(int, client, Discord);
+            q.songs.splice(1, 0, q.songs.pop());
         } catch (e) {
             console.error(e);
         }

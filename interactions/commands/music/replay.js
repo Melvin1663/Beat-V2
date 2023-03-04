@@ -11,7 +11,10 @@ module.exports = {
 
             if (!int.deffered && !int.replied) await int.deferReply().catch(console.log);
 
+            q.songs[0].stream = undefined;
             await require('../../../functions/play')(int, client, Discord);
+
+            return int.editReply('🔄 Replayed');
         } catch (e) {
             console.error(e)
         }

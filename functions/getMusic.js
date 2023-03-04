@@ -1,15 +1,14 @@
 const ytpl = require("ytpl");
-const ytsr = require('ytsr');
 const moment = require('moment');
 const hhmmss = require('hhmmss');
 const hhmmssToSec = require('hhmmsstosec');
 const descape = require('discord-escape');
 const pdl = require('play-dl');
 const ffmpeg = require('ffmpeg');
+const get = require('node-fetch2');
 const fs = require('fs');
 const { promisify } = require('util');
 const { pipeline } = require('stream');
-const get = require('node-fetch2');
 const sp = promisify(pipeline);
 
 module.exports = async (query, client, int) => {
@@ -20,15 +19,13 @@ module.exports = async (query, client, int) => {
         if (url.match(/https:\/\/cdn.discordapp.com\/ephemeral-attachments\/[0-9]+\/[0-9]+\/.+/gm)) {
             let req = await get(url);
             let dattach = int.options.getAttachment('song');
-            let now = new Date();
-            let filePath = `temp/${now.getTime()}.${url.split('.')[3]}`;
+            let filePath = `temp/${dattach.id}.${url.split('.')[3]}`;
 
             await sp(req.body, fs.createWriteStream(filePath));
-
             let audioFile = await new ffmpeg(filePath);
 
             let songInfo = audioFile.metadata;
-            
+
             return {
                 code: 0,
                 txt: '✅ Success',
@@ -41,8 +38,8 @@ module.exports = async (query, client, int) => {
                     url: url,
                     img: 'https://cdn-icons-png.flaticon.com/512/1169/1169863.png',
                     duration: hhmmss(songInfo.duration.seconds),
-                    ago: moment(now.getTime()).fromNow(),
-                    uploaded: now.getTime(),
+                    ago: moment(Date.now()).fromNow(),
+                    uploaded: Date.now(),
                     views: 'N/A',
                     likes: 'N/A',
                     req: int.user,
@@ -64,7 +61,7 @@ module.exports = async (query, client, int) => {
 
                 let vid_list = [];
                 for (const video of videos) {
-                    if (video.isPlayable) {
+                    if (video.isPlayable && !video.isLive) {
                         vid_list.push({
                             type: 'video',
                             infoReady: false,
@@ -103,41 +100,27 @@ module.exports = async (query, client, int) => {
             let song = await getVideoInfo(url, int);
 
             if (!song) return { code: 1, txt: '❌ Video unavailable' };
-
-            song.infoReady = true;
+            if (song.live) return { code: 3, txt: '❌ Cannot play livestreams' };
 
             if (!song.live && hhmmssToSec(song.duration) > 43200000) return { code: 3, txt: '❌ Song must be under 12 hours in length' };
             return { code: 0, txt: '✅ Success', res: song };
             // search on youtube
         } else {
-            const filters1 = await ytsr.getFilters(query);
-            const filter1 = filters1.get('Type').get('Video');
-            let vids = await ytsr(filter1.url, { limit: 1 });
+            let vids = await pdl.search(query, { source: { youtube: "video" }, limit: 1 });
 
-            if (!vids.items.length) return { code: 1, txt: '❌ No Results' };
+            if (!vids.length) return { code: 1, txt: '❌ No Results' };
 
-            let songInfo = vids.items[0];
+            let songInfo = vids[0];
+
+            if (songInfo.live) return { code: 3, txt: '❌ Cannot play livestreams' };
 
             let song = {
                 type: 'video',
                 infoReady: false,
-                id: songInfo.id,
-                title: descape(songInfo.title),
                 url: songInfo.url,
-                img: songInfo.bestThumbnail.url,
-                duration: songInfo.isLive ? 'LIVE' : songInfo.duration,
-                ago: songInfo.uploadedAt,
-                uploaded: null,
-                views: songInfo.views.toLocaleString(),
-                likes: null,
-                req: int.user,
-                start: 0,
-                live: songInfo.isLive,
-                startedAt: 0,
-                artist: descape(songInfo.author.name),
-                artistLink: descape(songInfo.author.url),
-                ageRestricted: null,
-            }
+                duration: hhmmss(songInfo.durationInSec),
+                live: songInfo.live
+            };
 
             if (!song?.live && hhmmssToSec(song?.duration) > 43200000) return { code: 3, txt: '❌ Song must be under 12 hours in length' };
             return { code: 0, txt: '✅ Success', res: song };
@@ -154,11 +137,12 @@ const getVideoInfo = async (url, int) => {
 
     let song = {
         type: 'video',
+        infoReady: true,
         id: songInfo.video_details.id,
         title: descape(songInfo.video_details.title),
         url: songInfo.video_details.url,
         img: songInfo.video_details.thumbnails[songInfo.video_details.thumbnails.length - 1].url,
-        duration: songInfo.video_details.live ? 'LIVE' : songInfo.video_details.durationRaw,
+        duration: songInfo.video_details.live ? 'LIVE' : hhmmss(songInfo.video_details.durationInSec),
         ago: moment(songInfo.video_details.uploadedAt, 'YYYY-MM-DD').fromNow(),
         uploaded: new Date(songInfo.video_details.uploadedAt).getTime(),
         views: songInfo.video_details.views.toLocaleString(),
@@ -169,7 +153,7 @@ const getVideoInfo = async (url, int) => {
         startedAt: 0,
         artist: descape(songInfo.video_details.channel.name),
         artistLink: descape(songInfo.video_details.channel.url),
-        ageRestricted: songInfo.video_details.discretionAdvised,
+        ageRestricted: songInfo.video_details.discretionAdvised
     };
 
     return song;

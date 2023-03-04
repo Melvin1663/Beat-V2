@@ -34,7 +34,6 @@ module.exports = {
                 )
                 .setFooter({ text: song.ago || '0 seconds ago' })
 
-
             int.reply({ embeds: [embed] }).catch(console.log);
         } catch (e) {
             console.error(e);

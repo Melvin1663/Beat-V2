@@ -1,8 +1,3 @@
-const voice = require('@discordjs/voice');
-const descape = require('discord-escape');
-const hhmmss = require('hhmmss');
-const hhmmssToSec = require('hhmmsstosec');
-
 module.exports = {
     name: 'playfile',
     description: 'Play an audio file in a Discord VC',

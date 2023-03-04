@@ -17,8 +17,7 @@
     "sourcebin": "^5.0.0",
     "util": "^0.12.5",
     "yt-search": "^2.10.4",
-    "ytpl": "^2.3.0",
-    "ytsr": "github:Yonle/node-ytsr"
+    "ytpl": "^2.3.0"
   },
   "name": "beat-v2",
   "version": "1.0.0",

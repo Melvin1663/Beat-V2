@@ -88,7 +88,10 @@ module.exports = {
                 loop: false,
                 repeat: false,
                 notify: true,
-                first: true
+                first: true,
+                subscribed: false,
+                events: false,
+                temp: {}
             };
 
             if (music.res.length) qConstruct.songs.push(...music.res[0]);
@@ -103,6 +106,11 @@ module.exports = {
                         guildId: channel.guild.id,
                         adapterCreator: channel.guild.voiceAdapterCreator,
                     });
+                    connection.on('stateChange', (old_state, new_state) => {
+                        if (old_state.status === voice.VoiceConnectionStatus.Ready && new_state.status === voice.VoiceConnectionStatus.Connecting) {
+                            connection.configureNetworking();
+                        }
+                    })
                     q.connection = connection;
                 }
 
