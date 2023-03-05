@@ -21,8 +21,6 @@ module.exports = {
             if (args[0] > q.songs.length) return int.reply(`❌ There's only \`${q.songs.length}\` song${q.songs.length > 1 ? 's' : ''} in the queue`)
 
             let lSong;
-            q.player?.removeAllListeners();
-            q.player?.stop();
 
             if (!args.length || args[0] == 1) lSong = q.songs.shift();
             else {
@@ -31,8 +29,8 @@ module.exports = {
             }
 
             await require('../../../functions/play')(int, client, Discord);
-
-            if (lSong.type == 'discord-attachment') fs.unlink(lSong.stream, console.error);
+            
+            if (lSong.type == 'discord-attachment') fs.unlink(lSong.filePath, console.error);
 
             return int.reply({
                 embeds: [

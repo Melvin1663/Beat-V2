@@ -1,4 +1,3 @@
-const ytpl = require("ytpl");
 const moment = require('moment');
 const hhmmss = require('hhmmss');
 const hhmmssToSec = require('hhmmsstosec');
@@ -11,12 +10,50 @@ const { promisify } = require('util');
 const { pipeline } = require('stream');
 const sp = promisify(pipeline);
 
-module.exports = async (query, client, int) => {
+module.exports = async (query, client, int, extra) => {
     const url = query ? query.replace(/<(.+)>/g, "$1") : '';
     if (!url) return { code: 1, txt: '❌ No Query given' };
 
     try {
-        if (url.match(/https:\/\/cdn.discordapp.com\/ephemeral-attachments\/[0-9]+\/[0-9]+\/.+/gm)) {
+        if (extra == 'spotify-track') {
+            console.log('test')
+            if (pdl.is_expired()) await pdl.refreshToken();
+            const tracks = await pdl.search(query, { source: { spotify: 'track' } });
+            if (!tracks.length) return { code: 1, txt: '❌ No results found' };
+            const songInfo = tracks[0];
+            const yt_tracks = await pdl.search(`${songInfo.artists.map(a => a.name).join(' + ')} - ${songInfo.name}`, { source: { youtube: 'video' }, limit: 1 });
+            if (!yt_tracks.length) return { code: 1, txt: '❌ No results found' };
+
+            const yt_songInfo = yt_tracks[0];
+
+            return {
+                code: 0,
+                txt: '✅ Success',
+                res: {
+                    type: 'spotify-track',
+                    streamType: 'youtube-video',
+                    streamURL: yt_songInfo.url,
+                    inputType: 'ogg/opus',
+                    infoReady: true,
+                    id: songInfo.id,
+                    title: descape(songInfo.name),
+                    url: songInfo.url,
+                    img: songInfo.thumbnail.url,
+                    duration: hhmmss(songInfo.durationInSec),
+                    req: int.user,
+                    start: 0,
+                    live: false,
+                    startedAt: 0,
+                    artist: descape(songInfo.artists.map(a => a.name).join(' + ')),
+                    artistLink: songInfo.artists.map(a => a.url),
+                    album: songInfo.album.name,
+                    albumLink: `https://open.spotify.com/album/${songInfo.album.id}`,
+                    explicit: songInfo.explicit
+                }
+            };
+
+            // if playlist
+        } else if (url.match(/https:\/\/cdn.discordapp.com\/ephemeral-attachments\/[0-9]+\/[0-9]+\/.+/gm)) {
             let req = await get(url);
             let dattach = int.options.getAttachment('song');
             let filePath = `temp/${dattach.id}.${url.split('.')[3]}`;
@@ -31,8 +68,12 @@ module.exports = async (query, client, int) => {
                 txt: '✅ Success',
                 res: {
                     type: 'discord-attachment',
+                    streamType: 'discord-attachment',
+                    streamURL: url,
+                    inputType: 'arbitrary',
+                    stream: fs.createReadStream(filePath),
+                    filePath: filePath,
                     infoReady: true,
-                    stream: filePath,
                     id: dattach.id,
                     title: descape(songInfo.title || dattach.name || 'N/A'),
                     url: url,
@@ -40,51 +81,46 @@ module.exports = async (query, client, int) => {
                     duration: hhmmss(songInfo.duration.seconds),
                     ago: moment(Date.now()).fromNow(),
                     uploaded: Date.now(),
-                    views: 'N/A',
-                    likes: 'N/A',
                     req: int.user,
                     start: 0,
                     live: false,
                     startedAt: 0,
                     artist: descape(songInfo.artist || 'N/A'),
-                    artistLink: 'N/A',
-                    ageRestricted: false,
                 }
             };
 
-            // if playlist
+            // if yt playlist
         } else if (url.match(/^https?:\/\/(www.youtube.com|youtube.com)\/playlist(.*)$/)) {
             try {
-                const playlist = await ytpl(url).catch(console.log)
+                const playlist = await pdl.playlist_info(url, { incomplete: true }).catch(console.log);
                 if (!playlist) return { code: 1, txt: '❌ No results found' }
-                const videos = await playlist.items;
+                const videos = await playlist.videos;
 
                 let vid_list = [];
                 for (const video of videos) {
-                    if (video.isPlayable && !video.isLive) {
+                    if (video.durationInSec < 43200000) {
                         vid_list.push({
-                            type: 'video',
+                            type: 'youtube-playlist-video',
+                            streamType: 'youtube-video',
+                            streamURL: video.url,
+                            inputType: 'ogg/opus',
                             infoReady: false,
-                            id: video.id,
                             title: descape(video.title),
-                            url: video.shortUrl,
-                            img: video.bestThumbnail.url,
-                            duration: video.isLive ? 'LIVE' : video.duration,
-                            ago: '?',
-                            views: '?',
-                            likes: '?',
+                            id: video.id,
+                            url: video.url,
+                            duration: video.isLive ? 'LIVE' : hhmmss(video.durationInSec),
                             req: int.user,
-                            start: 0,
                             live: video.isLive,
-                            startedAt: 0,
-                            artist: descape(video.author.name),
-                            artistLink: video.author.url,
-                            ageRestricted: false
                         })
                     }
                 }
 
-                return { code: 0, txt: '✅ Success', res: [vid_list, playlist] }
+                playlist.videos = vid_list;
+                playlist.type = 'youtube-playlist';
+                playlist.req = int.user;
+                playlist.img = playlist.thumbnail.url;
+
+                return { code: 0, txt: '✅ Success', res: playlist }
             } catch (e) {
                 console.log(e);
                 return { code: 4, txt: '❌ An Error occured' }
@@ -100,7 +136,6 @@ module.exports = async (query, client, int) => {
             let song = await getVideoInfo(url, int);
 
             if (!song) return { code: 1, txt: '❌ Video unavailable' };
-            if (song.live) return { code: 3, txt: '❌ Cannot play livestreams' };
 
             if (!song.live && hhmmssToSec(song.duration) > 43200000) return { code: 3, txt: '❌ Song must be under 12 hours in length' };
             return { code: 0, txt: '✅ Success', res: song };
@@ -112,13 +147,19 @@ module.exports = async (query, client, int) => {
 
             let songInfo = vids[0];
 
-            if (songInfo.live) return { code: 3, txt: '❌ Cannot play livestreams' };
-
             let song = {
-                type: 'video',
+                type: 'youtube-search',
+                streamType: 'youtube-video',
+                streamURL: songInfo.url,
+                inputType: 'ogg/opus',
+                id: songInfo.id,
                 infoReady: false,
                 url: songInfo.url,
-                duration: hhmmss(songInfo.durationInSec),
+                img: songInfo.thumbnails[songInfo.thumbnails.length - 1].url,
+                duration: songInfo.live ? 'LIVE' : hhmmss(songInfo.durationInSec),
+                req: int.user,
+                artist: descape(songInfo.channel.name),
+                artistLink: descape(songInfo.channel.url),
                 live: songInfo.live
             };
 
@@ -126,7 +167,7 @@ module.exports = async (query, client, int) => {
             return { code: 0, txt: '✅ Success', res: song };
         }
     } catch (e) {
-        console.log(e)
+        console.log(e);
         return { code: 4, txt: '❌ An Error occured' }
     }
 }
@@ -136,7 +177,10 @@ const getVideoInfo = async (url, int) => {
     if (!songInfo) return null;
 
     let song = {
-        type: 'video',
+        type: 'youtube-url',
+        streamType: 'youtube-video',
+        streamURL: songInfo.video_details.url,
+        inputType: 'ogg/opus',
         infoReady: true,
         id: songInfo.video_details.id,
         title: descape(songInfo.video_details.title),

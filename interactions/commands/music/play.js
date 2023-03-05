@@ -1,80 +1,36 @@
 const voice = require('@discordjs/voice');
+const pdl = require('play-dl');
 const descape = require('discord-escape');
 const hhmmss = require('hhmmss');
 const hhmmssToSec = require('hhmmsstosec');
+const embeds = require('../../../functions/embeds');
 
 module.exports = {
     name: 'play',
-    description: 'Play Music in a Discord VC',
+    description: 'Play music in a Discord VC',
     options: [
         {
             name: 'song',
-            description: 'YouTube/Spotify URL/Keyword',
+            description: 'YouTube search/URL | Spotify URL | Soundcloud URL',
             type: 3,
             required: true
         }
     ],
-    run: async (Discord, client, int, args) => {
+    run: async (Discord, client, int, args, extra) => {
         try {
             let q = client.queue.get(int.guild.id);
             let channel = int.member.voice.channel;
             if (!channel) return int.reply('❌ You need to be in a voice channel');
             if (q && int?.member?.voice?.channelId !== q.voiceChannel.id) return int.reply(`❌ You need to be in <#${q.voiceChannel.id}>`);
-
             if (!int.deffered && !int.replied) await int.deferReply().catch(console.log);
 
-            let music = await require('../../../functions/getMusic')(args[0], client, int);
+            let music = await require('../../../functions/getMusic')(args[0], client, int, extra);
             if (music.code != 0) return int.editReply(music.txt || '❌ An error occured');
             if (q && q.songs.length > 0) {
-                let isPlaylist = false
-                let song;
-                if (music.res.length) {
-                    q.songs.push(...music.res[0]);
-                    isPlaylist = true;
-                    song = music.res[0][0];
-                }
-                else {
-                    q.songs.push(music.res);
-                    song = music.res
-                }
+                if (music.res.type == 'youtube-playlist') q.songs.push(...music.res.videos);
+                else q.songs.push(music.res);
 
-                let thing;
-
-                if (isPlaylist) {
-                    let pl = music.res[1];
-                    let totalDur = music.res[0].reduce((a, b) => a + hhmmssToSec(b.duration), 0);
-
-                    thing = new Discord.EmbedBuilder()
-                        .setAuthor({ name: 'Added to Queue', iconURL: 'https://i.imgur.com/5I8C0jo.gif' })
-                        .setColor('Yellow')
-                        .setThumbnail(pl.bestThumbnail.url)
-                        .setTitle(descape(pl.title))
-                        .setURL(pl.url)
-                        .addFields(
-                            { name: 'Artist', value: `[${pl.author.name}](${pl.author.url})`, inline: true },
-                            { name: 'Duration', value: hhmmss(totalDur) ?? '?', inline: true },
-                            { name: 'Requested by', value: song.req.toString(), inline: true },
-                            { name: 'Visibility', value: pl.visibility ?? '?', inline: true },
-                            { name: 'Song Count', value: pl.items.length, inline: true },
-                            { name: 'Views', value: pl.views.toLocaleString(), inline: true }
-                        )
-                        .setFooter({ text: pl.lastUpdated || '0 seconds ago' })
-                } else thing = new Discord.EmbedBuilder()
-                    .setAuthor({ name: 'Added to Queue', iconURL: 'https://i.imgur.com/5I8C0jo.gif' })
-                    .setColor('Yellow')
-                    .setThumbnail(song.img)
-                    .setTitle(song.title)
-                    .setURL(song.url)
-                    .setTimestamp(song.uploaded)
-                    .addFields(
-                        { name: 'Artist', value: `[${song.artist}](${song.artistLink})`, inline: true },
-                        { name: 'Duration', value: song.duration, inline: true },
-                        { name: 'Views', value: song.views, inline: true },
-                        { name: 'Requested by', value: song.req.toString(), inline: true },
-                    )
-                    .setFooter({ text: song.ago || '0 seconds ago' })
-
-                return int.editReply({ embeds: [thing] }).catch(console.log);
+                return int.editReply({ embeds: [embeds('aq', music.res)] }).catch(console.log);
             }
 
             const qConstruct = {
@@ -90,11 +46,10 @@ module.exports = {
                 notify: true,
                 first: true,
                 subscribed: false,
-                events: false,
-                temp: {}
+                events: false
             };
 
-            if (music.res.length) qConstruct.songs.push(...music.res[0]);
+            if (music.res.type == 'youtube-playlist') qConstruct.songs.push(...music.res.videos);
             else qConstruct.songs.push(music.res);
             client.queue.set(int.guild.id, qConstruct);
 
@@ -114,30 +69,7 @@ module.exports = {
                     q.connection = connection;
                 }
 
-                if (music.res.length) {
-                    let pl = music.res[1];
-                    let totalDur = music.res[0].reduce((a, b) => a + hhmmssToSec(b.duration), 0);
-
-                    const song = q.songs[0];
-
-                    let thing = new Discord.EmbedBuilder()
-                        .setAuthor({ name: 'Added to Queue', iconURL: 'https://i.imgur.com/5I8C0jo.gif' })
-                        .setColor('Yellow')
-                        .setThumbnail(pl.bestThumbnail.url)
-                        .setTitle(descape(pl.title))
-                        .setURL(pl.url)
-                        .addFields(
-                            { name: 'Artist', value: `[${pl.author.name}](${pl.author.url})`, inline: true },
-                            { name: 'Duration', value: hhmmss(totalDur) ?? '?', inline: true },
-                            { name: 'Requested by', value: song.req.toString(), inline: true },
-                            { name: 'Visibility', value: pl.visibility ?? '?', inline: true },
-                            { name: 'Song Count', value: pl.items.length.toLocaleString(), inline: true },
-                            { name: 'Views', value: pl.views.toLocaleString(), inline: true }
-                        )
-                        .setFooter({ text: pl.lastUpdated || '0 seconds ago' })
-
-                    int.editReply({ embeds: [thing] });
-                }
+                if (music.res.type == 'youtube-playlist') int.editReply({ embeds: [embeds('aq', music.res)] });
 
                 await require('../../../functions/play')(int, client, Discord)
             } catch (e) {

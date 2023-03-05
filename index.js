@@ -32,7 +32,7 @@ const sendWebhook = (msg) => {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({ content: msg })
-    });
+    }).catch(console.error);
 }
 
 runProcess();
