@@ -152,6 +152,7 @@ module.exports = async (query, client, int, extra) => {
                 streamType: 'youtube-video',
                 streamURL: songInfo.url,
                 inputType: 'ogg/opus',
+                title: descape(songInfo.title),
                 id: songInfo.id,
                 infoReady: false,
                 url: songInfo.url,

@@ -26,8 +26,4 @@ if (fs.existsSync('.data/spotify.data')) {
     })()
 }
 
-// await pdl.setToken({
-//     spotify: fs.readFileSync('.data/spotify.data', { encoding: 'utf-8' })
-// })
-
 client.login(process.env.TOKEN)

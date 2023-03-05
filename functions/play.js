@@ -90,6 +90,8 @@ module.exports = async (int, client, Discord) => {
                 return;
             }
 
+            if (!q.playing) player.pause();
+
             let song = q.songs[0];
 
             if (!q.songs[0].infoReady) {
