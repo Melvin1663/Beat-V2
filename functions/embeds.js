@@ -13,6 +13,14 @@ module.exports = (style, data) => {
         .setFooter({ text: data.ago || null })
 
     switch (data.type) {
+        case 'spotify-playlist': base.addFields(
+            { name: 'Owner', value: `[${data.owner.name}](${data.owner.url})` },
+            { name: 'Requested by', value: data.req?.toString(), inline: true },
+            { name: '\u200b', value: '\u200b', inline: true },
+            { name: 'Duration', value: hhmmss(data.tracks.reduce((a, b) => a + hhmmssToSec(b.duration), 0)), inline: true },
+            { name: 'Playable/Song count', value: `${data.tracks.length.toLocaleString()}/${data.tracksCount.toLocaleString()}`, inline: true },
+            { name: 'Collaborative', value: data.collaborative ? 'Yes' : 'No', inline: true }
+        ); break;
         case 'spotify-track': base.addFields(
             { name: 'Artist', value: data.artist.split(' + ').map((a, i) => `[${a}](${data.artistLink[i]})`).join(' + '), inline: true },
             { name: 'Requested by', value: data.req?.toString(), inline: true },
@@ -38,7 +46,7 @@ module.exports = (style, data) => {
                 { name: 'Likes', value: data.likes, inline: true },
             )
             else base.addFields(
-                { name: 'Artist', value: `[${data.artist}](${data.artistLink})`, inline: true },
+                { name: 'Channel', value: `[${data.artist}](${data.artistLink})`, inline: true },
                 { name: 'Duration', value: data.duration, inline: true },
                 { name: 'Requested by', value: data.req.toString(), inline: true },
             )
@@ -48,7 +56,7 @@ module.exports = (style, data) => {
             { name: 'Duration', value: hhmmss(data.videos.reduce((a, b) => a + hhmmssToSec(b.duration), 0)) ?? 'N/A', inline: true },
             { name: 'Requested by', value: data.req.toString(), inline: true },
             { name: 'Visibility', value: data.visibility ?? 'N/A', inline: true },
-            { name: 'Song/Playable Count', value: `${data.videos.length.toLocaleString()}/${data.videoCount.toLocaleString()}`, inline: true },
+            { name: 'Playable/Song count', value: `${data.videos.length.toLocaleString()}/${data.videoCount.toLocaleString()}`, inline: true },
             { name: 'Views', value: data.views.toLocaleString(), inline: true }
         ); break;
     }

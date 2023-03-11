@@ -27,7 +27,7 @@ module.exports = {
             let music = await require('../../../functions/getMusic')(args[0], client, int, extra);
             if (music.code != 0) return int.editReply(music.txt || '❌ An error occured');
             if (q && q.songs.length > 0) {
-                if (music.res.type == 'youtube-playlist') q.songs.push(...music.res.videos);
+                if (music.res.type == 'youtube-playlist' || music.res.type == 'spotify-playlist') q.songs.push(...music.res[music.res.type == 'spotify-playlist' ? 'tracks' : 'videos']);
                 else q.songs.push(music.res);
 
                 return int.editReply({ embeds: [embeds('aq', music.res)] }).catch(console.log);
@@ -49,7 +49,7 @@ module.exports = {
                 events: false
             };
 
-            if (music.res.type == 'youtube-playlist') qConstruct.songs.push(...music.res.videos);
+            if (music.res.type == 'youtube-playlist' || music.res.type == 'spotify-playlist') qConstruct.songs.push(...music.res[music.res.type == 'spotify-playlist' ? 'tracks' : 'videos']);
             else qConstruct.songs.push(music.res);
             client.queue.set(int.guild.id, qConstruct);
 
@@ -69,7 +69,7 @@ module.exports = {
                     q.connection = connection;
                 }
 
-                if (music.res.type == 'youtube-playlist') int.editReply({ embeds: [embeds('aq', music.res)] });
+                if (music.res.type == 'youtube-playlist' || music.res.type == 'spotify-playlist') int.editReply({ embeds: [embeds('aq', music.res)] });
 
                 await require('../../../functions/play')(int, client, Discord)
             } catch (e) {

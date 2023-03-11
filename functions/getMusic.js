@@ -16,7 +16,6 @@ module.exports = async (query, client, int, extra) => {
 
     try {
         if (extra == 'spotify-track') {
-            console.log('test')
             if (pdl.is_expired()) await pdl.refreshToken();
             const tracks = await pdl.search(query, { source: { spotify: 'track' } });
             if (!tracks.length) return { code: 1, txt: '❌ No results found' };
@@ -127,10 +126,82 @@ module.exports = async (query, client, int, extra) => {
             }
             // if spotify playlist
         } else if (url.match(/^https?:\/\/open.spotify.com\/playlist(.*)$/)) {
-            return { code: 2, txt: 'Ability to play spotify playlists is coming sooooooon' };
+            if (pdl.is_expired()) await pdl.refreshToken();
+
+            const playlist = await pdl.spotify(url);
+            if (!playlist) return { code: 1, txt: '❌ No results found' };
+            const tracks = playlist.fetched_tracks.get('1');
+            if (!tracks || !tracks.length) return { code: 1, txt: '❌ Could not retrieve tracks from the playlist' };
+
+            let track_list = [];
+
+            for (const track of tracks) {
+                if (track.durationInSec < 43200000) {
+                    track_list.push({
+                        type: 'spotify-track',
+                        streamType: 'youtube-video',
+                        streamURL: null,
+                        inputType: 'ogg/opus',
+                        infoReady: false,
+                        title: descape(track.name),
+                        id: track.id,
+                        url: track.url,
+                        duration: hhmmss(track.durationInSec),
+                        artist: descape(track.artists.map(a => a.name).join(' + ')),
+                        artistLink: track.artists.map(a => a.url),
+                        album: track.album.name,
+                        req: int.user
+                    })
+                }
+            }
+
+            playlist.type = 'spotify-playlist';
+            playlist.req = int.user;
+            playlist.img = playlist.thumbnail.url;
+            playlist.tracks = track_list;
+
+            return { code: 0, txt: '✅ Success', res: playlist }
             // if spotify track
         } else if (url.match(/^https?:\/\/open.spotify.com\/track(.*)$/)) {
-            return { code: 2, txt: 'Ability to play spotify tracks is coming soooooon' };
+            try {
+                if (pdl.is_expired()) await pdl.refreshToken();
+
+                let songInfo = await pdl.spotify(url);
+
+                if (!songInfo) return { code: 1, txt: '❌ No results found' };
+                const yt_tracks = await pdl.search(`${songInfo.artists.map(a => a.name).join(' + ')} - ${songInfo.name}`, { source: { youtube: 'video' }, limit: 1 });
+                if (!yt_tracks.length) return { code: 1, txt: '❌ No results found' };
+
+                const yt_songInfo = yt_tracks[0];
+
+                return {
+                    code: 0,
+                    txt: '✅ Success',
+                    res: {
+                        type: 'spotify-track',
+                        streamType: 'youtube-video',
+                        streamURL: yt_songInfo.url,
+                        inputType: 'ogg/opus',
+                        infoReady: true,
+                        id: songInfo.id,
+                        title: descape(songInfo.name),
+                        url: songInfo.url,
+                        img: songInfo.thumbnail.url,
+                        duration: hhmmss(songInfo.durationInSec),
+                        req: int.user,
+                        start: 0,
+                        live: false,
+                        startedAt: 0,
+                        artist: descape(songInfo.artists.map(a => a.name).join(' + ')),
+                        artistLink: songInfo.artists.map(a => a.url),
+                        album: songInfo.album.name,
+                        albumLink: `https://open.spotify.com/album/${songInfo.album.id}`,
+                        explicit: songInfo.explicit
+                    }
+                };
+            } catch (e) {
+                console.error(e);
+            }
             // if youtube video url
         } else if (url.match(/^(https?:\/\/)?(www\.)?(m\.)?(youtube\.com|youtu\.?be)\/.+$/gi)) {
             let song = await getVideoInfo(url, int);

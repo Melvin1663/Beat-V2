@@ -25,6 +25,20 @@ module.exports = async (int, client, Discord) => {
 
         q.player = player;
 
+        if (!q.songs[0].streamURL) {
+            let yt_tracks = await pdl.search(`${q.songs[0].artist} - ${q.songs[0].title}`, { source: { youtube: 'video' }, limit: 1 });
+            if (!yt_tracks.length) {
+                console.error(`No YT results for ${q.songs[0].artist} - ${q.songs[0].name}`);
+                q.songs.shift();
+                q.textChannel.send(`❌ Unable to stream ${q.songs[0].artist} - ${q.songs[0].name}`).catch(console.log);
+                require('./play.js')(int, client, Discord);
+            }
+
+            let yt_songInfo = yt_tracks[0];
+
+            q.songs[0].streamURL = yt_songInfo.url;
+        }
+
         if (!q.songs[0].stream) {
             if (q.songs[0].streamType == 'youtube-video') q.songs[0].stream = await pdl.stream(q.songs[0].streamURL, { quality: 2, discordPlayerCompatibility: true }).then(r => r.stream);
             else if (q.songs[0].streamType == 'discord-attachment') q.songs[0].stream = fs.createReadStream(`temp/${q.songs[0].id}.${q.songs[0].url.split('.')[3]}`)
