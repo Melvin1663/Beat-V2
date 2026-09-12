@@ -26,7 +26,7 @@ module.exports = async (Discord, client) => {
         }
     }
 
-    await client.guilds.cache.get('1032824163909509131')?.commands.set(aoi).then(r => {
+    await client.guilds.cache.get('833590952157380638')?.commands.set(aoi).then(r => {
         console.log(`${r.size} Interaction(s) loaded`);
     }).catch(console.log)
     client.user.setActivity('Kappug', { type: Discord.ActivityType.Watching })

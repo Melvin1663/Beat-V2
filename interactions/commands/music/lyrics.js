@@ -1,4 +1,4 @@
-const lyrics = require('lyrics-finder');
+const getLyrics = require('../../../functions/lyrics');
 
 module.exports = {
     name: 'lyrics',
@@ -9,30 +9,41 @@ module.exports = {
             description: 'Song title',
             type: 3,
             required: false
+        },
+        {
+            name: 'artist',
+            description: 'Song artist',
+            type: 3,
+            required: false
         }
     ],
     run: async (Discord, client, int, args) => {
         try {
-            let q = client.queue.get(int.guild.id)
+            let q = client.queue.get(int.guild.id);
+            let song = q?.songs?.[0];
 
-            if (!args[0] && !q) return int.reply('❌ No song specified');
-            else if (!args.length && q) args[0] = q.songs[0].title
+            if (!args[0] && !song) return int.reply('❌ No song specified');
 
-            if (!int.deffered && !int.replied) await int.deferReply().catch(console.log);
+            let title = args[0] || song.title;
+            let artist = args[0] ? args[1] : song.artist;
 
-            let lyric = await lyrics(args[0]);
+            if (!int.deferred && !int.replied) await int.deferReply().catch(console.log);
 
-            if (!lyric) return int.editReply(`❌ No lyrics found for **${args[0]}**`)
+            let lyric = await getLyrics(title, artist);
+
+            if (!lyric) return int.editReply(`❌ No lyrics found for **${title}**`);
 
             let embed = new Discord.EmbedBuilder()
                 .setColor('Random')
                 .setFooter({ text: `Requested by ${int.user.tag}`, iconURL: int.user.displayAvatarURL() })
-                .setTitle(`Lyrics: ${args[0]}`)
+                .setTitle(`Lyrics: ${title}`)
                 .setDescription(lyric.length >= 4093 ? lyric.substring(0, 4093) + '...' : lyric)
 
             return int.editReply({ embeds: [embed] }).catch(console.log);
         } catch (e) {
             console.error(e);
+            if (int.deferred || int.replied) return int.editReply('❌ Could not retrieve lyrics').catch(console.log);
+            return int.reply('❌ Could not retrieve lyrics').catch(console.log);
         }
     }
 }
