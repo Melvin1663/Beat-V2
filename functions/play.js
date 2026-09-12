@@ -1,148 +1,125 @@
 const voice = require('@discordjs/voice');
-const fs = require('fs')
-const pdl = require('play-dl');
+const fs = require('node:fs');
 const obo = require('./overwriteObj');
 const embeds = require('./embeds');
+const youtube = require('./youtube');
 
 module.exports = async (int, client, Discord) => {
     try {
-        let q = client.queue.get(int.guild.id);
+        const q = client.queue.get(int.guild.id);
+        if (!q) return;
 
         const player = voice.createAudioPlayer({
             behaviors: {
-                noSubscriber: voice.NoSubscriberBehavior.Pause,
-            },
+                noSubscriber: voice.NoSubscriberBehavior.Pause
+            }
         });
 
         if (!q.songs.length) {
-            q.player.removeAllListeners()
-            q.player.stop();
+            q.player?.removeAllListeners();
+            q.player?.stop();
             client.queue.delete(int.guild.id);
-
             require('./clearTemp')();
             return;
         }
 
         q.player = player;
+        const song = q.songs[0];
 
-        if (!q.songs[0].streamURL) {
-            let yt_tracks = await pdl.search(`${q.songs[0].artist} - ${q.songs[0].title}`, { source: { youtube: 'video' }, limit: 1 });
-            if (!yt_tracks.length) {
-                console.error(`No YT results for ${q.songs[0].artist} - ${q.songs[0].name}`);
+        if (!song.streamURL) {
+            const result = await youtube.searchMusic(`${song.artist} - ${song.title}`);
+            if (!result) {
                 q.songs.shift();
-                q.textChannel.send(`❌ Unable to stream ${q.songs[0].artist} - ${q.songs[0].name}`).catch(console.log);
-                require('./play.js')(int, client, Discord);
+                q.textChannel.send(`❌ Unable to stream ${song.artist} - ${song.title}`).catch(console.log);
+                return module.exports(int, client, Discord);
             }
-
-            let yt_songInfo = yt_tracks[0];
-
-            q.songs[0].streamURL = yt_songInfo.url;
+            song.streamURL = youtube.videoUrl(result.youtubeId);
         }
 
-        if (!q.songs[0].stream) {
-            if (q.songs[0].streamType == 'youtube-video') q.songs[0].stream = await pdl.stream(q.songs[0].streamURL, { quality: 2, discordPlayerCompatibility: true }).then(r => r.stream);
-            else if (q.songs[0].streamType == 'discord-attachment') q.songs[0].stream = fs.createReadStream(`temp/${q.songs[0].id}.${q.songs[0].url.split('.')[3]}`)
+        if (!song.stream) {
+            if (song.streamType === 'youtube-video') song.stream = youtube.streamAudio(song.streamURL);
+            else if (song.streamType === 'discord-attachment') song.stream = fs.createReadStream(song.filePath);
         }
 
-        await player.play(voice.createAudioResource(q.songs[0].stream, { inlineVolume: true, inputType: q.songs[0].inputType }));
-
-        q.connection.subscribe(player);
-        q.connection?.state?.subscription?.player?.state?.resource?.volume?.setVolume(q.volume)
-
-        q.player.on('idle', async () => {
-            let a = 0;
-
-            // If no more songs in the queue
-            if (!q.songs.length) {
-                q.player?.removeAllListeners()
-                q.player?.stop();
-                client.queue.delete(int.guild.id);
-
-                require('./clearTemp')();
-
-                return a++;
-            }
-
-            // if song repeat is on
-            if (q.repeat) { a++ };
-
-            // if queue loop is on
-            if (q.loop && !q.repeat) {
-                let b = q.songs.shift();
-                q.songs.push(b);
-                a++;
-            };
-
-            if (!a) {
-                let s = q.songs.shift();
-
-                if (s.type == 'discord-attachment') fs.unlink(s.filePath, e => e ? console.error(e) : {});
-            }
-
-            require('./play.js')(int, client, Discord);
-        })
-
-        q.player.on('error', err => {
-            console.error('[STREAM] ' + err)
-            q.textChannel.send('An error occured while playing the song: ' + err.message)
-            if (q.songs.length > 1) q.songs.shift();
+        const stopQueue = () => {
+            q.player?.removeAllListeners();
+            q.player?.stop();
+            client.queue.delete(int.guild.id);
             require('./clearTemp')();
+        };
 
-            require('./play')(int, client, Discord)
-        })
+        player.on('stateChange', async (oldState, newState) => {
+            if (q.player !== player) return;
 
-        q.player.on('playing', async (oS, nS) => {
-            if (oS.status == 'paused') return;
-            if (oS.status == 'autopaused') return;
+            if (newState.status === voice.AudioPlayerStatus.Idle && oldState.status !== voice.AudioPlayerStatus.Idle) {
+                let keepSong = false;
 
-            if (!q.songs.length) {
-                q.player.removeAllListeners()
-                q.player.stop();
-                client.queue.delete(int.guild.id);
-                require('./clearTemp')();
+                if (!q.songs.length) return stopQueue();
+                if (q.repeat) {
+                    q.songs[0].stream = undefined;
+                    keepSong = true;
+                }
+                if (q.loop && !q.repeat) {
+                    const repeated = q.songs.shift();
+                    repeated.stream = undefined;
+                    q.songs.push(repeated);
+                    keepSong = true;
+                }
 
-                return;
+                if (!keepSong) {
+                    const finished = q.songs.shift();
+                    if (finished.type === 'discord-attachment') fs.unlink(finished.filePath, error => error && console.error(error));
+                }
+
+                return module.exports(int, client, Discord);
             }
 
-            if (!q.playing) player.pause();
-
-            let song = q.songs[0];
+            if (newState.status !== voice.AudioPlayerStatus.Playing || oldState.status === voice.AudioPlayerStatus.Paused || oldState.status === voice.AudioPlayerStatus.AutoPaused) return;
+            if (!q.songs.length) return stopQueue();
+            if (!q.playing) return player.pause();
 
             if (!q.songs[0].infoReady) {
-                let resSong = await require('./getMusic')(q.songs[0].url, client, int);
-
-                if (resSong) newSongInfo = obo(q.songs[0], resSong.res);
-
-                newSongInfo.infoReady = true;
+                const result = await require('./getMusic')(q.songs[0].url, client, int);
+                if (result?.res) q.songs[0] = obo(q.songs[0], result.res);
+                q.songs[0].infoReady = true;
             }
 
-            q.songs[0] = song;
-
-            if (!song) return;
-            if (q.first == true || q.notify == true) {
-                if (q.first == true) q.first = false;
-                if (q.loop == false && q.repeat == false) {
-                    let thing = embeds('np', song);
-
-                    if (int.replied) return int.channel.send({ embeds: [thing] }).catch(console.log)
-                    else return int.editReply({ embeds: [thing] }).catch(console.log)
-                }
+            const current = q.songs[0];
+            if (!current || (!q.first && !q.notify)) return;
+            if (q.first) q.first = false;
+            if (!q.loop && !q.repeat) {
+                const embed = embeds('np', current);
+                if (int.replied) return int.channel.send({ embeds: [embed] }).catch(console.log);
+                return int.editReply({ embeds: [embed] }).catch(console.log);
             }
-        })
+        });
+
+        player.on('error', error => {
+            console.error('[STREAM] ' + error);
+            q.textChannel.send('An error occured while playing the song: ' + error.message).catch(console.log);
+            if (q.songs.length > 1) q.songs.shift();
+            require('./clearTemp')();
+            module.exports(int, client, Discord);
+        });
 
         if (!q.events) {
             q.events = true;
-
             q.connection.on('disconnected', () => {
                 q.connection?.destroy();
                 q.player?.removeAllListeners();
                 q.player?.stop();
-                client.queue.delete(int.guild.id)
-
+                client.queue.delete(int.guild.id);
                 require('./clearTemp')();
-            })
+            });
         }
-    } catch (e) {
-        console.log(e);
+
+        q.connection.subscribe(player);
+        player.play(voice.createAudioResource(song.stream, {
+            inlineVolume: true,
+            inputType: song.inputType
+        }));
+        q.connection?.state?.subscription?.player?.state?.resource?.volume?.setVolume(q.volume);
+    } catch (error) {
+        console.log(error);
     }
-}
+};

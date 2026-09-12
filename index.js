@@ -1,5 +1,4 @@
 const child = require('child_process');
-const get = require('node-fetch2');
 require('dotenv').config();
 
 const runProcess = () => {
@@ -26,7 +25,7 @@ const runProcess = () => {
 }
 
 const sendWebhook = (msg) => {
-    get(process.env.WHURL, {
+    fetch(process.env.WHURL, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'

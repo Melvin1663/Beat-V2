@@ -1,27 +1,28 @@
-const pdl = require('play-dl');
+const youtube = require('../../../functions/youtube');
 
 module.exports = {
     name: 'playlist',
-    description: 'Play a playlist in a Discord VC',
+    description: 'Play a YouTube playlist in a Discord VC',
     options: [
         {
             name: 'playlist',
-            description: 'Play a YT playlist (YT Playlist search/URL)',
+            description: 'YouTube playlist URL or search',
             type: 3,
             required: true
         }
     ],
     run: async (Discord, client, int, args) => {
         try {
-            if (!int.deffered && !int.replied) await int.deferReply().catch(console.log);
+            let url = args[0];
+            if (!youtube.isYouTubeUrl(url)) {
+                const result = await youtube.searchPlaylist(url);
+                if (!result) return int.reply('❌ No Results');
+                url = `https://www.youtube.com/playlist?list=${result.playlistId}`;
+            }
 
-            let playlists = await pdl.search(args[0], { source: { youtube: 'playlist' }, limit: 1 })
-
-            if (!playlists.length) return int.editReply('❌ No Results');
-
-            require('./play').run(Discord, client, int, [playlists[0].url]).catch(console.log);
-        } catch (e) {
-            console.error(e);
+            return require('./play').run(Discord, client, int, [url]).catch(console.log);
+        } catch (error) {
+            console.error(error);
         }
     }
-}
+};

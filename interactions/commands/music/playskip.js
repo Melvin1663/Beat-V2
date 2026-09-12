@@ -4,7 +4,7 @@ module.exports = {
     options: [
         {
             name: 'song',
-            description: 'YouTube/Spotify URL/Keyword',
+            description: 'YouTube URL or keyword',
             type: 3,
             required: true
         }

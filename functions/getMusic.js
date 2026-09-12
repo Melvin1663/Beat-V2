@@ -1,67 +1,97 @@
-const moment = require('moment');
-const hhmmss = require('hhmmss');
-const hhmmssToSec = require('hhmmsstosec');
-const descape = require('discord-escape');
-const pdl = require('play-dl');
-const ffmpeg = require('ffmpeg');
-const get = require('node-fetch2');
-const fs = require('fs');
-const { promisify } = require('util');
-const { pipeline } = require('stream');
-const sp = promisify(pipeline);
+const fs = require('node:fs');
+const path = require('node:path');
+const { pipeline } = require('node:stream/promises');
+const { Readable } = require('node:stream');
+const escape = require('./escape');
+const { formatDuration, parseDuration, relativeTime } = require('./time');
+const readAudioMetadata = require('./mediaMetadata');
+const youtube = require('./youtube');
 
-module.exports = async (query, client, int, extra) => {
-    const url = query ? query.replace(/<(.+)>/g, "$1") : '';
+const MAX_DURATION = 43200000;
+
+const formatNumber = value => Number.isFinite(Number(value)) ? Number(value).toLocaleString() : 'N/A';
+
+const parseUploadDate = value => value && value.length === 8
+    ? new Date(`${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6)}`)
+    : value;
+
+const makeSong = (info, int, type, infoReady) => {
+    const id = info.id || info.youtubeId;
+    const url = info.webpage_url || info.url || youtube.videoUrl(id);
+    const live = Boolean(info.is_live || info.live_status === 'is_live' || info.live);
+    const artist = info.channel || info.uploader || info.artists?.map(a => a.name).join(' + ') || 'YouTube';
+    const artistLink = info.channel_url || info.uploader_url || (info.channel_id && `https://www.youtube.com/channel/${info.channel_id}`) || (infoReady ? url : undefined);
+    const duration = info.duration?.totalSeconds ?? info.duration;
+    const image = info.thumbnail || info.thumbnailUrl || info.thumbnails?.at(-1)?.url || `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+
+    return {
+        type,
+        streamType: 'youtube-video',
+        streamURL: youtube.videoUrl(id),
+        inputType: 'ogg/opus',
+        infoReady,
+        id,
+        title: escape(info.title || 'N/A'),
+        url,
+        img: image,
+        duration: live ? 'LIVE' : formatDuration(duration),
+        req: int.user,
+        start: 0,
+        live,
+        startedAt: 0,
+        artist: escape(artist),
+        artistLink,
+        ago: info.upload_date ? relativeTime(parseUploadDate(info.upload_date)) : undefined,
+        uploaded: info.timestamp ? info.timestamp * 1000 : undefined,
+        views: info.view_count == null ? (infoReady ? 'N/A' : undefined) : formatNumber(info.view_count),
+        likes: info.like_count == null ? (infoReady ? 'N/A' : undefined) : formatNumber(info.like_count),
+        ageRestricted: info.age_limit == null ? (infoReady ? false : undefined) : Number(info.age_limit) >= 18
+    };
+};
+
+const getVideoInfo = async (url, int) => {
+    const info = await youtube.info(url, { noPlaylist: true }).catch(() => null);
+    return info?.id ? makeSong(info, int, 'youtube-url', true) : null;
+};
+
+const getPlaylistInfo = async (url, int) => {
+    const info = await youtube.info(url, { flatPlaylist: true });
+    const videos = (info.entries || [])
+        .filter(video => video?.id)
+        .map(video => makeSong(video, int, 'youtube-playlist-video', false));
+
+    return {
+        type: 'youtube-playlist',
+        title: escape(info.title || info.id || 'YouTube playlist'),
+        url,
+        img: info.thumbnail || videos[0]?.img,
+        channel: {
+            name: escape(info.uploader || info.channel || 'YouTube'),
+            url: info.uploader_url || info.channel_url || url
+        },
+        visibility: info.availability || 'N/A',
+        videoCount: Number(info.playlist_count) || videos.length,
+        views: Number(info.view_count) || 0,
+        req: int.user,
+        videos
+    };
+};
+
+module.exports = async (query, client, int) => {
+    const url = query ? query.replace(/<(.+)>/g, '$1') : '';
     if (!url) return { code: 1, txt: '❌ No Query given' };
 
     try {
-        if (extra == 'spotify-track') {
-            if (pdl.is_expired()) await pdl.refreshToken();
-            const tracks = await pdl.search(query, { source: { spotify: 'track' } });
-            if (!tracks.length) return { code: 1, txt: '❌ No results found' };
-            const songInfo = tracks[0];
-            const yt_tracks = await pdl.search(`${songInfo.artists.map(a => a.name).join(' + ')} - ${songInfo.name}`, { source: { youtube: 'video' }, limit: 1 });
-            if (!yt_tracks.length) return { code: 1, txt: '❌ No results found' };
+        if (/^https:\/\/cdn\.discordapp\.com\/ephemeral-attachments\/[0-9]+\/[0-9]+\/.+/i.test(url)) {
+            const response = await fetch(url);
+            if (!response.ok || !response.body) throw new Error(`Attachment request failed: ${response.status}`);
 
-            const yt_songInfo = yt_tracks[0];
+            const attachment = int.options.getAttachment('song');
+            const extension = path.extname(new URL(url).pathname).slice(1) || 'audio';
+            const filePath = path.join('temp', `${attachment.id}.${extension}`);
+            await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(filePath));
 
-            return {
-                code: 0,
-                txt: '✅ Success',
-                res: {
-                    type: 'spotify-track',
-                    streamType: 'youtube-video',
-                    streamURL: yt_songInfo.url,
-                    inputType: 'ogg/opus',
-                    infoReady: true,
-                    id: songInfo.id,
-                    title: descape(songInfo.name),
-                    url: songInfo.url,
-                    img: songInfo.thumbnail.url,
-                    duration: hhmmss(songInfo.durationInSec),
-                    req: int.user,
-                    start: 0,
-                    live: false,
-                    startedAt: 0,
-                    artist: descape(songInfo.artists.map(a => a.name).join(' + ')),
-                    artistLink: songInfo.artists.map(a => a.url),
-                    album: songInfo.album.name,
-                    albumLink: `https://open.spotify.com/album/${songInfo.album.id}`,
-                    explicit: songInfo.explicit
-                }
-            };
-
-            // if playlist
-        } else if (url.match(/https:\/\/cdn.discordapp.com\/ephemeral-attachments\/[0-9]+\/[0-9]+\/.+/gm)) {
-            let req = await get(url);
-            let dattach = int.options.getAttachment('song');
-            let filePath = `temp/${dattach.id}.${url.split('.')[3]}`;
-
-            await sp(req.body, fs.createWriteStream(filePath));
-            let audioFile = await new ffmpeg(filePath);
-
-            let songInfo = audioFile.metadata;
-
+            const metadata = await readAudioMetadata(filePath);
             return {
                 code: 0,
                 txt: '✅ Success',
@@ -71,206 +101,53 @@ module.exports = async (query, client, int, extra) => {
                     streamURL: url,
                     inputType: 'arbitrary',
                     stream: fs.createReadStream(filePath),
-                    filePath: filePath,
+                    filePath,
                     infoReady: true,
-                    id: dattach.id,
-                    title: descape(songInfo.title || dattach.name || 'N/A'),
-                    url: url,
+                    id: attachment.id,
+                    title: escape(metadata.title || attachment.name || 'N/A'),
+                    url,
                     img: 'https://cdn-icons-png.flaticon.com/512/1169/1169863.png',
-                    duration: hhmmss(songInfo.duration.seconds),
-                    ago: moment(Date.now()).fromNow(),
+                    duration: formatDuration(metadata.duration.seconds),
+                    ago: relativeTime(Date.now()),
                     uploaded: Date.now(),
                     req: int.user,
                     start: 0,
                     live: false,
                     startedAt: 0,
-                    artist: descape(songInfo.artist || 'N/A'),
+                    artist: escape(metadata.artist || 'N/A')
                 }
             };
+        }
 
-            // if yt playlist
-        } else if (url.match(/^https?:\/\/(www.youtube.com|youtube.com)\/playlist(.*)$/)) {
-            try {
-                const playlist = await pdl.playlist_info(url, { incomplete: true }).catch(console.log);
-                if (!playlist) return { code: 1, txt: '❌ No results found' }
-                const videos = await playlist.videos;
+        if (youtube.isYouTubeUrl(url) && youtube.isPlaylistUrl(url)) {
+            const playlist = await getPlaylistInfo(url, int);
+            return playlist.videos.length
+                ? { code: 0, txt: '✅ Success', res: playlist }
+                : { code: 1, txt: '❌ No results found' };
+        }
 
-                let vid_list = [];
-                for (const video of videos) {
-                    if (video.durationInSec < 43200000) {
-                        vid_list.push({
-                            type: 'youtube-playlist-video',
-                            streamType: 'youtube-video',
-                            streamURL: video.url,
-                            inputType: 'ogg/opus',
-                            infoReady: false,
-                            title: descape(video.title),
-                            id: video.id,
-                            url: video.url,
-                            duration: video.isLive ? 'LIVE' : hhmmss(video.durationInSec),
-                            req: int.user,
-                            live: video.isLive,
-                        })
-                    }
-                }
-
-                playlist.videos = vid_list;
-                playlist.type = 'youtube-playlist';
-                playlist.req = int.user;
-                playlist.img = playlist.thumbnail.url;
-
-                return { code: 0, txt: '✅ Success', res: playlist }
-            } catch (e) {
-                console.log(e);
-                return { code: 4, txt: '❌ An Error occured' }
-            }
-            // if spotify playlist
-        } else if (url.match(/^https?:\/\/open.spotify.com\/playlist(.*)$/)) {
-            if (pdl.is_expired()) await pdl.refreshToken();
-
-            const playlist = await pdl.spotify(url);
-            if (!playlist) return { code: 1, txt: '❌ No results found' };
-            const tracks = playlist.fetched_tracks.get('1');
-            if (!tracks || !tracks.length) return { code: 1, txt: '❌ Could not retrieve tracks from the playlist' };
-
-            let track_list = [];
-
-            for (const track of tracks) {
-                if (track.durationInSec < 43200000) {
-                    track_list.push({
-                        type: 'spotify-track',
-                        streamType: 'youtube-video',
-                        streamURL: null,
-                        inputType: 'ogg/opus',
-                        infoReady: false,
-                        title: descape(track.name),
-                        id: track.id,
-                        url: track.url,
-                        duration: hhmmss(track.durationInSec),
-                        artist: descape(track.artists.map(a => a.name).join(' + ')),
-                        artistLink: track.artists.map(a => a.url),
-                        album: track.album.name,
-                        req: int.user
-                    })
-                }
-            }
-
-            playlist.type = 'spotify-playlist';
-            playlist.req = int.user;
-            playlist.img = playlist.thumbnail.url;
-            playlist.tracks = track_list;
-
-            return { code: 0, txt: '✅ Success', res: playlist }
-            // if spotify track
-        } else if (url.match(/^https?:\/\/open.spotify.com\/track(.*)$/)) {
-            try {
-                if (pdl.is_expired()) await pdl.refreshToken();
-
-                let songInfo = await pdl.spotify(url);
-
-                if (!songInfo) return { code: 1, txt: '❌ No results found' };
-                const yt_tracks = await pdl.search(`${songInfo.artists.map(a => a.name).join(' + ')} - ${songInfo.name}`, { source: { youtube: 'video' }, limit: 1 });
-                if (!yt_tracks.length) return { code: 1, txt: '❌ No results found' };
-
-                const yt_songInfo = yt_tracks[0];
-
-                return {
-                    code: 0,
-                    txt: '✅ Success',
-                    res: {
-                        type: 'spotify-track',
-                        streamType: 'youtube-video',
-                        streamURL: yt_songInfo.url,
-                        inputType: 'ogg/opus',
-                        infoReady: true,
-                        id: songInfo.id,
-                        title: descape(songInfo.name),
-                        url: songInfo.url,
-                        img: songInfo.thumbnail.url,
-                        duration: hhmmss(songInfo.durationInSec),
-                        req: int.user,
-                        start: 0,
-                        live: false,
-                        startedAt: 0,
-                        artist: descape(songInfo.artists.map(a => a.name).join(' + ')),
-                        artistLink: songInfo.artists.map(a => a.url),
-                        album: songInfo.album.name,
-                        albumLink: `https://open.spotify.com/album/${songInfo.album.id}`,
-                        explicit: songInfo.explicit
-                    }
-                };
-            } catch (e) {
-                console.error(e);
-            }
-            // if youtube video url
-        } else if (url.match(/^(https?:\/\/)?(www\.)?(m\.)?(youtube\.com|youtu\.?be)\/.+$/gi)) {
-            let song = await getVideoInfo(url, int);
-
+        if (youtube.isYouTubeUrl(url)) {
+            const song = await getVideoInfo(url, int);
             if (!song) return { code: 1, txt: '❌ Video unavailable' };
-
-            if (!song.live && hhmmssToSec(song.duration) > 43200000) return { code: 3, txt: '❌ Song must be under 12 hours in length' };
-            return { code: 0, txt: '✅ Success', res: song };
-            // search on youtube
-        } else {
-            let vids = await pdl.search(query, { source: { youtube: "video" }, limit: 1 });
-
-            if (!vids.length) return { code: 1, txt: '❌ No Results' };
-
-            let songInfo = vids[0];
-
-            let song = {
-                type: 'youtube-search',
-                streamType: 'youtube-video',
-                streamURL: songInfo.url,
-                inputType: 'ogg/opus',
-                title: descape(songInfo.title),
-                id: songInfo.id,
-                infoReady: false,
-                url: songInfo.url,
-                img: songInfo.thumbnails[songInfo.thumbnails.length - 1].url,
-                duration: songInfo.live ? 'LIVE' : hhmmss(songInfo.durationInSec),
-                req: int.user,
-                artist: descape(songInfo.channel.name),
-                artistLink: descape(songInfo.channel.url),
-                live: songInfo.live
-            };
-
-            if (!song?.live && hhmmssToSec(song?.duration) > 43200000) return { code: 3, txt: '❌ Song must be under 12 hours in length' };
+            if (!song.live && parseDuration(song.duration) > MAX_DURATION) return { code: 3, txt: '❌ Song must be under 12 hours in length' };
             return { code: 0, txt: '✅ Success', res: song };
         }
-    } catch (e) {
-        console.log(e);
-        return { code: 4, txt: '❌ An Error occured' }
+
+        const result = await youtube.searchMusic(url);
+        if (!result) return { code: 1, txt: '❌ No Results' };
+
+        const song = makeSong({
+            id: result.youtubeId,
+            title: result.title,
+            artists: result.artists,
+            thumbnailUrl: result.thumbnailUrl,
+            duration: result.duration,
+            url: youtube.videoUrl(result.youtubeId)
+        }, int, 'youtube-search', false);
+        if (!song.live && parseDuration(song.duration) > MAX_DURATION) return { code: 3, txt: '❌ Song must be under 12 hours in length' };
+        return { code: 0, txt: '✅ Success', res: song };
+    } catch (error) {
+        console.error(error);
+        return { code: 4, txt: '❌ An Error occured' };
     }
-}
-
-const getVideoInfo = async (url, int) => {
-    let songInfo = await pdl.video_basic_info(url).catch(console.log);
-    if (!songInfo) return null;
-
-    let song = {
-        type: 'youtube-url',
-        streamType: 'youtube-video',
-        streamURL: songInfo.video_details.url,
-        inputType: 'ogg/opus',
-        infoReady: true,
-        id: songInfo.video_details.id,
-        title: descape(songInfo.video_details.title),
-        url: songInfo.video_details.url,
-        img: songInfo.video_details.thumbnails[songInfo.video_details.thumbnails.length - 1].url,
-        duration: songInfo.video_details.live ? 'LIVE' : hhmmss(songInfo.video_details.durationInSec),
-        ago: moment(songInfo.video_details.uploadedAt, 'YYYY-MM-DD').fromNow(),
-        uploaded: new Date(songInfo.video_details.uploadedAt).getTime(),
-        views: songInfo.video_details.views.toLocaleString(),
-        likes: songInfo.video_details.likes.toLocaleString(),
-        req: int.user,
-        start: 0,
-        live: songInfo.video_details.live,
-        startedAt: 0,
-        artist: descape(songInfo.video_details.channel.name),
-        artistLink: descape(songInfo.video_details.channel.url),
-        ageRestricted: songInfo.video_details.discretionAdvised
-    };
-
-    return song;
-}
+};

@@ -1,5 +1,4 @@
-const hhmmss = require('hhmmss');
-const hhmmssToSec = require('hhmmsstosec');
+const { formatDuration, parseDuration } = require('../../../functions/time');
 
 module.exports = {
     name: 'queue',
@@ -9,7 +8,7 @@ module.exports = {
             let q = client.queue.get(int.guild.id)
             if (!q || !q.songs.length) return int.reply('❌ There are no songs in the queue');
             let songs = require('../../../functions/genQ')(q, 1);
-            let tsl = q.songs.reduce((a, b) => a + hhmmssToSec(b.duration), 0);
+            let tsl = q.songs.reduce((a, b) => a + (Number(parseDuration(b.duration)) || 0), 0);
 
             let embed = new Discord.EmbedBuilder()
                 .setAuthor({ name: 'Server songs queue', iconURL: 'https://i.imgur.com/5I8C0jo.gif' })
@@ -21,7 +20,7 @@ module.exports = {
                     { name: 'Text Channel', value: q.textChannel.toString(), inline: true },
                     { name: 'Voice Channel', value: q.voiceChannel.toString(), inline: true },
                     { name: 'Volume', value: `🎧 ${Math.trunc(q.volume * 100)}%`, inline: true },
-                    { name: 'Length', value: `⏱ ${hhmmss(tsl)}`, inline: true },
+                    { name: 'Length', value: `⏱ ${formatDuration(tsl)}`, inline: true },
                     { name: 'Songs', value: `🎶 ${q.songs.length.toLocaleString()}`, inline: true }
                 )
                 .setFooter({ text: `Notifs: ${q.notify ? '✅' : '❌'} | Loop Queue: ${q.loop ? '✅' : '❌'} | Loop Track: ${q.repeat ? '✅' : '❌'} | Playing: ${q.playing ? '✅' : '❌'}` })
