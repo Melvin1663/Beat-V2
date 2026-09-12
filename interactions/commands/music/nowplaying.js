@@ -11,14 +11,18 @@ module.exports = {
             if (!q || !q.connection || !q.songs.length) return int.reply("❌ There are no songs in the queue");
 
             let song = q.songs[0];
-            let curDur = q.connection?.state?.subscription?.player?.state?.resource?.playbackDuration;
-            let totalDur = song.duration != 'LIVE' ? parseDuration(song.duration) : curDur / 1000;
+            let playback = Number(q.connection?.state?.subscription?.player?.state?.resource?.playbackDuration) || 0;
+            let curDur = playback / 1000 + (Number(song.startedAt) || 0);
+            let totalDur = song.duration != 'LIVE' ? parseDuration(song.duration) : curDur;
+            let progress = Number.isFinite(totalDur) && totalDur > 0
+                ? Math.min(19, Math.max(1, Math.round(curDur / totalDur * 19)))
+                : 1;
 
             int.reply({
                 embeds: [
                     embeds('np', song).addFields({
                         name: 'Current Duration',
-                        value: `\`${formatDuration(curDur / 1000)}\` ${pb('🔘', '▬', Math.round((((curDur / 1000) + song.startedAt) / totalDur) * 19), 20)} \`${song.duration}\``
+                        value: `\`${formatDuration(curDur)}\` ${pb('🔘', '▬', progress, 20)} \`${song.duration}\``
                     })
                 ]
             }).catch(console.log);

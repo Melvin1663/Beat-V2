@@ -54,8 +54,10 @@ const searchPlaylist = async query => {
     return (await searchPlaylists(query)).find(playlist => playlist.playlistId);
 };
 
-const streamAudio = url => {
+const streamAudio = (url, startSeconds = 0) => {
     if (!ffmpeg) throw new Error('ffmpeg is not available');
+
+    const seek = Number(startSeconds);
 
     const extractor = youtubedl.exec(url, {
         output: '-',
@@ -67,6 +69,7 @@ const streamAudio = url => {
     });
     const transcoder = spawn(ffmpeg, [
         '-hide_banner', '-loglevel', 'error', '-i', 'pipe:0',
+        ...(Number.isFinite(seek) && seek > 0 ? ['-ss', String(seek)] : []),
         '-vn', '-c:a', 'libopus', '-b:a', '256k', '-vbr', 'on',
         '-application', 'audio', '-f', 'ogg', 'pipe:1'
     ], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });

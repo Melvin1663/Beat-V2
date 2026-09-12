@@ -4,7 +4,7 @@ const obo = require('./overwriteObj');
 const embeds = require('./embeds');
 const youtube = require('./youtube');
 
-module.exports = async (int, client, Discord) => {
+module.exports = async (int, client, Discord, startSeconds = 0, announce = true) => {
     try {
         const q = client.queue.get(int.guild.id);
         if (!q) return;
@@ -25,6 +25,7 @@ module.exports = async (int, client, Discord) => {
 
         q.player = player;
         const song = q.songs[0];
+        song.startedAt = startSeconds;
 
         if (!song.streamURL) {
             const result = await youtube.searchMusic(`${song.artist} - ${song.title}`);
@@ -37,7 +38,7 @@ module.exports = async (int, client, Discord) => {
         }
 
         if (!song.stream) {
-            if (song.streamType === 'youtube-video') song.stream = youtube.streamAudio(song.streamURL);
+            if (song.streamType === 'youtube-video') song.stream = youtube.streamAudio(song.streamURL, startSeconds);
             else if (song.streamType === 'discord-attachment') song.stream = fs.createReadStream(song.filePath);
         }
 
@@ -88,6 +89,7 @@ module.exports = async (int, client, Discord) => {
             if (!current || (!q.first && !q.notify)) return;
             if (q.first) q.first = false;
             if (!q.loop && !q.repeat) {
+                if (!announce) return;
                 const embed = embeds('np', current);
                 if (int.replied) return int.channel.send({ embeds: [embed] }).catch(console.log);
                 return int.editReply({ embeds: [embed] }).catch(console.log);
